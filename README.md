@@ -1,6 +1,15 @@
 # Eight Megabytes That Never Came Back.
 
-## A Note on This Document
+![Mainline Linux](https://img.shields.io/badge/MAINLINE_LINUX_7.0.0-0a0a0a?style=for-the-badge&logo=linux&logoColor=F5C842)
+![Subsystem](https://img.shields.io/badge/mm%2Fvmalloc.c-0a0a0a?style=for-the-badge&logo=gnu&logoColor=aaaaaa)
+![Bug](https://img.shields.io/badge/VREALLOC_SHRINK_BUG-0a0a0a?style=for-the-badge&logo=hackaday&logoColor=3DD68C)
+![LKML](https://img.shields.io/badge/LORE.KERNEL.ORG-0a0a0a?style=for-the-badge&logo=mail.ru&logoColor=5B9CF2)
+![syzbot](https://img.shields.io/badge/SYZBOT_TESTED-0a0a0a?style=for-the-badge&logo=googlecloud&logoColor=F26B5B)
+
+
+> Ever wondered why `vrealloc()` could shrink an allocation, zero the tail, return success — and never free a single physical page? Why the buddy allocator never knew those 2048 frames were done? Why there was no crash, no warning, just RAM silently gone — and a TODO comment sitting right there in mainline, left by the developer who already knew?
+
+---
 
 This is a **reconstructed postmortem** of a kernel bug investigation and fix, completed on **May 7, 2026**. The work happened across a single day — from reading a TODO comment in kernel source to sending two patches to the Linux kernel mailing list. I collected terminal output, dmesg logs, QEMU boot traces, and selftest results throughout, then structured this afterward. The order reflects the logical progression of reasoning, not a precise chronological transcript.
 
