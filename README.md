@@ -36,13 +36,7 @@ if (size <= old_size) {
 
 ## Root Cause
 
-### The Short Version
-
 > `vrealloc()`'s shrink path handled the bookkeeping but skipped the actual work: unmapping the page table entries for the tail region, flushing the TLB, and returning the physical pages to the buddy allocator. RAM stayed allocated with no owner.
-
----
-
-### The Full Picture
 
 Every vmalloc allocation is backed by three things the kernel tracks simultaneously:
 
