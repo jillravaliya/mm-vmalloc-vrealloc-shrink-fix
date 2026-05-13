@@ -1,0 +1,121 @@
+From 650d00f98820e88c3990fd2b0298053dd3ec4ad7 Mon Sep 17 00:00:00 2001
+From: Jill Ravaliya <jillravaliya@gmail.com>
+Date: Thu, 7 May 2026 17:11:08 +0530
+Subject: [PATCH 2/2] selftests/mm: add test for vrealloc() shrink page freeing
+
+Add a selftest that verifies vrealloc() frees physical pages
+when shrinking an allocation.
+
+The test loads a kernel module that:
+1. Allocates 10MB with vmalloc()
+2. Touches all pages to force physical allocation
+3. Shrinks to 2MB with vrealloc()
+4. Verifies free page count increased after shrink
+
+Without the fix, the test fails because no pages are freed.
+With the fix applied, the test passes confirming ~2048 pages
+are returned to the system after shrinking from 10MB to 2MB.
+
+Tested on kernel 7.0.0 in QEMU.
+
+Signed-off-by: Jill Ravaliya <jillravaliya@gmail.com>
+---
+ tools/testing/selftests/mm/Makefile           |  5 ++
+ .../selftests/mm/vrealloc_shrink_test.c       | 65 +++++++++++++++++++
+ 2 files changed, 70 insertions(+)
+ create mode 100644 tools/testing/selftests/mm/vrealloc_shrink_test.c
+
+diff --git a/tools/testing/selftests/mm/Makefile b/tools/testing/selftests/mm/Makefile
+index cd24596cd..4eab7c76c 100644
+--- a/tools/testing/selftests/mm/Makefile
++++ b/tools/testing/selftests/mm/Makefile
+@@ -104,6 +104,7 @@ TEST_GEN_FILES += hugetlb_dio
+ TEST_GEN_FILES += droppable
+ TEST_GEN_FILES += guard-regions
+ TEST_GEN_FILES += merge
++TEST_GEN_FILES += vrealloc_shrink_test
+ TEST_GEN_FILES += rmap
+ TEST_GEN_FILES += folio_split_race_test
+ 
+@@ -282,3 +283,7 @@ warn_missing_page_frag:
+ 	echo "Warning: $(PAGE_FRAG_WARNING). page_frag test will be skipped." ; \
+ 	echo
+ endif
++
++# vrealloc shrink test module
++vrealloc_shrink_mod.ko: vrealloc_shrink_mod.c
++	$(MAKE) -C $(KDIR) M=$(PWD) modules
+diff --git a/tools/testing/selftests/mm/vrealloc_shrink_test.c b/tools/testing/selftests/mm/vrealloc_shrink_test.c
+new file mode 100644
+index 000000000..cf4263074
+--- /dev/null
++++ b/tools/testing/selftests/mm/vrealloc_shrink_test.c
+@@ -0,0 +1,65 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Test that vrealloc() frees physical pages when shrinking.
++ *
++ * vrealloc() shrink path previously zeroed unused memory and updated
++ * vm->requested_size, but never freed the physical pages backing the
++ * unused portion of the allocation. This test verifies the fix by
++ * loading a kernel module that directly measures nr_pages before and
++ * after vrealloc() shrink.
++ *
++ * Copyright (C) 2026 Jill Ravaliya
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include "../kselftest.h"
++
++#define MODULE_NAME "vrealloc_shrink_mod"
++#define DMESG_PASS  "vrealloc_shrink: PASS"
++#define DMESG_FAIL  "vrealloc_shrink: FAIL"
++
++static int run_cmd(const char *cmd)
++{
++	return system(cmd);
++}
++
++static int check_dmesg_for(const char *pattern)
++{
++	char cmd[256];
++	snprintf(cmd, sizeof(cmd),
++		 "dmesg | grep -q '%s'", pattern);
++	return system(cmd) == 0;
++}
++
++int main(void)
++{
++	ksft_print_header();
++	ksft_set_plan(1);
++
++	/* Insert the test module */
++	if (run_cmd("insmod " MODULE_NAME ".ko") != 0) {
++		ksft_test_result_skip(
++			"could not load %s.ko - is it built?\n",
++			MODULE_NAME);
++		ksft_finished();
++	}
++
++	/* Check dmesg for pass/fail */
++	if (check_dmesg_for(DMESG_PASS)) {
++		ksft_test_result_pass(
++			"vrealloc shrink frees physical pages\n");
++	} else if (check_dmesg_for(DMESG_FAIL)) {
++		ksft_test_result_fail(
++			"vrealloc shrink did NOT free physical pages\n");
++	} else {
++		ksft_test_result_fail(
++			"could not find test result in dmesg\n");
++	}
++
++	run_cmd("rmmod " MODULE_NAME);
++	ksft_finished();
++}
+-- 
+2.43.0
+

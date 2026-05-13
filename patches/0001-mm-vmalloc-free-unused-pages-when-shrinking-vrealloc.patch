@@ -1,0 +1,60 @@
+From c5780f0508bb23e06925756a7b8e38ba8a426f7c Mon Sep 17 00:00:00 2001
+From: Jill Ravaliya <jillravaliya@gmail.com>
+Date: Thu, 7 May 2026 17:10:33 +0530
+Subject: [PATCH] mm/vmalloc: free unused pages when shrinking vrealloc()
+ allocation
+
+vrealloc() shrink path zeros unused memory and updates
+vm->requested_size, but never frees the physical pages,
+removes page table mappings, or flushes the TLB for the
+unused range.
+
+When a caller shrinks a vmalloc allocation, physical pages
+backing the unused portion remain allocated until vfree()
+is eventually called, wasting real RAM.
+
+Fix this by unmapping the unused virtual range using
+vunmap_range() which also flushes the TLB, freeing each
+unused physical page back to the buddy allocator, and
+updating vm->nr_pages to reflect the new page count.
+
+Signed-off-by: Jill Ravaliya <jillravaliya@gmail.com>
+---
+ mm/vmalloc.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/mm/vmalloc.c b/mm/vmalloc.c
+index aa08651ec..a8cedfc5d 100644
+--- a/mm/vmalloc.c
++++ b/mm/vmalloc.c
+@@ -4336,6 +4336,27 @@ void *vrealloc_node_align_noprof(const void *p, size_t size, unsigned long align
+ 			memset((void *)p + size, 0, old_size - size);
+ 		vm->requested_size = size;
+ 		kasan_vrealloc(p, old_size, size);
++
++		/* Shrink the vm_area: unmap and free unused pages. */
++		if (size < alloced_size) {
++			unsigned long new_nr_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
++			unsigned long i;
++
++			/* Unmap unused virtual range and flush TLB. */
++			vunmap_range((unsigned long)p + PAGE_ALIGN(size),
++				     (unsigned long)p + alloced_size);
++
++			/* Free unused physical pages back to buddy allocator. */
++			for (i = new_nr_pages; i < vm->nr_pages; i++) {
++				mod_lruvec_page_state(vm->pages[i],
++						      NR_VMALLOC, -1);
++				__free_page(vm->pages[i]);
++				vm->pages[i] = NULL;
++			}
++
++			vm->nr_pages = new_nr_pages;
++		}
++
+ 		return (void *)p;
+ 	}
+ 
+-- 
+2.43.0
+
