@@ -1,5 +1,4 @@
-> This directory contains the Linux kernel patchset that fixes a memory
-reclaim issue in `vrealloc()` when shrinking vmalloc-backed allocations.
+> ### **This directory contains the Linux kernel patchset that fixes a memory reclaim issue in `vrealloc()` when shrinking vmalloc-backed allocations.**
 
 ---
 
